@@ -8,7 +8,7 @@ const Header = () => {
     const [searchTerm, setSearchTerm] = useState('')
     const navigate = useNavigate()
     const handleSubmit = (event) => {
-        event.preventDefault()
+        event.preventDefault()  
         const urlParams = new URLSearchParams(window.location.search)
         urlParams.set('searchTerm', searchTerm)
         const searchQuery = urlParams.toString()
