@@ -1,386 +1,264 @@
 import { useEffect, useState } from 'react';
-import {
-    getDownloadURL,
-    getStorage,
-    ref,
-    uploadBytesResumable,
-} from 'firebase/storage';
-import { app } from '../firebase';
-import { useSelector } from 'react-redux';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import ListingItem from '../components/ListingItem';
 
-export default function CreateListing() {
-    const { currentUser } = useSelector((state) => state.user);
-    const navigate = useNavigate();
-    const params = useParams();
-    const [files, setFiles] = useState([]);
-    const [formData, setFormData] = useState({
-        imageUrls: [],
-        name: '',
-        description: '',
-        address: '',
-        type: 'rent',
-        bedroom: 1,
-        bathroom: 1,
-        regularPrice: 50,
-        discountPrice: 0,
-        offer: false,
-        parking: false,
-        furnished: false,
-    });
-    const [imageUploadError, setImageUploadError] = useState(false);
-    const [uploading, setUploading] = useState(false);
-    const [error, setError] = useState(false);
-    const [loading, setLoading] = useState(false);
+export default function Search() {
+  const navigate = useNavigate();
+  const [sidebardata, setSidebardata] = useState({
+    searchTerm: '',
+    type: 'all',
+    parking: false,
+    furnished: false,
+    offer: false,
+    sort: 'created_at',
+    order: 'desc',
+  });
 
-    useEffect(() => {
-        const fetchListing = async () => {
-            const listingId = params.listingId;
-            const res = await fetch(`/api/listing/get/${listingId}`);
-            const data = await res.json();
-            if (data.success === false) {
-                console.log(data.message);
-                return;
-            }
-            setFormData(data);
-        };
+  const [loading, setLoading] = useState(false);
+  const [listings, setListings] = useState([]);
+  const [showMore, setShowMore] = useState(false);
 
-        fetchListing();
-    }, []);
+  useEffect(() => {
+    const urlParams = new URLSearchParams(location.search);
+    const searchTermFromUrl = urlParams.get('searchTerm');
+    const typeFromUrl = urlParams.get('type');
+    const parkingFromUrl = urlParams.get('parking');
+    const furnishedFromUrl = urlParams.get('furnished');
+    const offerFromUrl = urlParams.get('offer');
+    const sortFromUrl = urlParams.get('sort');
+    const orderFromUrl = urlParams.get('order');
 
-    const handleImageSubmit = (e) => {
-        if (files.length > 0 && files.length + formData.imageUrls.length < 7) {
-            setUploading(true);
-            setImageUploadError(false);
-            const promises = [];
+    if (
+      searchTermFromUrl ||
+      typeFromUrl ||
+      parkingFromUrl ||
+      furnishedFromUrl ||
+      offerFromUrl ||
+      sortFromUrl ||
+      orderFromUrl
+    ) {
+      setSidebardata({
+        searchTerm: searchTermFromUrl || '',
+        type: typeFromUrl || 'all',
+        parking: parkingFromUrl === 'true' ? true : false,
+        furnished: furnishedFromUrl === 'true' ? true : false,
+        offer: offerFromUrl === 'true' ? true : false,
+        sort: sortFromUrl || 'created_at',
+        order: orderFromUrl || 'desc',
+      });
+    }
 
-            for (let i = 0; i < files.length; i++) {
-                promises.push(storeImage(files[i]));
-            }
-            Promise.all(promises)
-                .then((urls) => {
-                    setFormData({
-                        ...formData,
-                        imageUrls: formData.imageUrls.concat(urls),
-                    });
-                    setImageUploadError(false);
-                    setUploading(false);
-                })
-                .catch((err) => {
-                    setImageUploadError('Image upload failed (2 mb max per image)');
-                    setUploading(false);
-                });
-        } else {
-            setImageUploadError('You can only upload 6 images per listing');
-            setUploading(false);
-        }
+    const fetchListings = async () => {
+      setLoading(true);
+      setShowMore(false);
+      const searchQuery = urlParams.toString();
+      const res = await fetch(`/api/listing/get?${searchQuery}`);
+      const data = await res.json();
+      if (data.length > 8) {
+        setShowMore(true);
+      } else {
+        setShowMore(false);
+      }
+      setListings(data);
+      setLoading(false);
     };
 
-    const storeImage = async (file) => {
-        return new Promise((resolve, reject) => {
-            const storage = getStorage(app);
-            const fileName = new Date().getTime() + file.name;
-            const storageRef = ref(storage, fileName);
-            const uploadTask = uploadBytesResumable(storageRef, file);
-            uploadTask.on(
-                'state_changed',
-                (snapshot) => {
-                    const progress =
-                        (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                    console.log(`Upload is ${progress}% done`);
-                },
-                (error) => {
-                    reject(error);
-                },
-                () => {
-                    getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-                        resolve(downloadURL);
-                    });
-                }
-            );
-        });
-    };
+    fetchListings();
+  }, [location.search]);
 
-    const handleRemoveImage = (index) => {
-        setFormData({
-            ...formData,
-            imageUrls: formData.imageUrls.filter((_, i) => i !== index),
-        });
-    };
+  const handleChange = (e) => {
+    if (
+      e.target.id === 'all' ||
+      e.target.id === 'rent' ||
+      e.target.id === 'sale'
+    ) {
+      setSidebardata({ ...sidebardata, type: e.target.id });
+    }
 
-    const handleChange = (e) => {
-        if (e.target.id === 'sale' || e.target.id === 'rent') {
-            setFormData({
-                ...formData,
-                type: e.target.id,
-            });
-        }
+    if (e.target.id === 'searchTerm') {
+      setSidebardata({ ...sidebardata, searchTerm: e.target.value });
+    }
 
-        if (
-            e.target.id === 'parking' ||
-            e.target.id === 'furnished' ||
-            e.target.id === 'offer'
-        ) {
-            setFormData({
-                ...formData,
-                [e.target.id]: e.target.checked,
-            });
-        }
+    if (
+      e.target.id === 'parking' ||
+      e.target.id === 'furnished' ||
+      e.target.id === 'offer'
+    ) {
+      setSidebardata({
+        ...sidebardata,
+        [e.target.id]:
+          e.target.checked || e.target.checked === 'true' ? true : false,
+      });
+    }
 
-        if (
-            e.target.type === 'number' ||
-            e.target.type === 'text' ||
-            e.target.type === 'textarea'
-        ) {
-            setFormData({
-                ...formData,
-                [e.target.id]: e.target.value,
-            });
-        }
-    };
+    if (e.target.id === 'sort_order') {
+      const sort = e.target.value.split('_')[0] || 'created_at';
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        try {
-            if (formData.imageUrls.length < 1)
-                return setError('You must upload at least one image');
-            if (+formData.regularPrice < +formData.discountPrice)
-                return setError('Discount price must be lower than regular price');
-            setLoading(true);
-            setError(false);
-            const res = await fetch(`/api/listing/update/${params.listingId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    ...formData,
-                    userRef: currentUser._id,
-                }),
-            });
-            const data = await res.json();
-            setLoading(false);
-            if (data.success === false) {
-                setError(data.message);
-            }
-            navigate(`/listing/${data._id}`);
-        } catch (error) {
-            setError(error.message);
-            setLoading(false);
-        }
-    };
-    return (
-        <main className='p-3 max-w-4xl mx-auto'>
-            <h1 className='text-3xl font-semibold text-center my-7'>
-                Update a Listing
-            </h1>
-            <form onSubmit={handleSubmit} className='flex flex-col sm:flex-row gap-4'>
-                <div className='flex flex-col gap-4 flex-1'>
-                    <input
-                        type='text'
-                        placeholder='Name'
-                        className='border p-3 rounded-lg'
-                        id='name'
-                        maxLength='62'
-                        minLength='10'
-                        required
-                        onChange={handleChange}
-                        value={formData.name}
-                    />
-                    <textarea
-                        type='text'
-                        placeholder='Description'
-                        className='border p-3 rounded-lg'
-                        id='description'
-                        required
-                        onChange={handleChange}
-                        value={formData.description}
-                    />
-                    <input
-                        type='text'
-                        placeholder='Address'
-                        className='border p-3 rounded-lg'
-                        id='address'
-                        required
-                        onChange={handleChange}
-                        value={formData.address}
-                    />
-                    <div className='flex gap-6 flex-wrap'>
-                        <div className='flex gap-2'>
-                            <input
-                                type='checkbox'
-                                id='sale'
-                                className='w-5'
-                                onChange={handleChange}
-                                checked={formData.type === 'sale'}
-                            />
-                            <span>Sell</span>
-                        </div>
-                        <div className='flex gap-2'>
-                            <input
-                                type='checkbox'
-                                id='rent'
-                                className='w-5'
-                                onChange={handleChange}
-                                checked={formData.type === 'rent'}
-                            />
-                            <span>Rent</span>
-                        </div>
-                        <div className='flex gap-2'>
-                            <input
-                                type='checkbox'
-                                id='parking'
-                                className='w-5'
-                                onChange={handleChange}
-                                checked={formData.parking}
-                            />
-                            <span>Parking spot</span>
-                        </div>
-                        <div className='flex gap-2'>
-                            <input
-                                type='checkbox'
-                                id='furnished'
-                                className='w-5'
-                                onChange={handleChange}
-                                checked={formData.furnished}
-                            />
-                            <span>Furnished</span>
-                        </div>
-                        <div className='flex gap-2'>
-                            <input
-                                type='checkbox'
-                                id='offer'
-                                className='w-5'
-                                onChange={handleChange}
-                                checked={formData.offer}
-                            />
-                            <span>Offer</span>
-                        </div>
-                    </div>
-                    <div className='flex flex-wrap gap-6'>
-                        <div className='flex items-center gap-2'>
-                            <input
-                                type='number'
-                                id='bedroom'
-                                min='1'
-                                max='10'
-                                required
-                                className='p-3 border border-gray-300 rounded-lg'
-                                onChange={handleChange}
-                                value={formData.bedroom}
-                            />
-                            <p>Beds</p>
-                        </div>
-                        <div className='flex items-center gap-2'>
-                            <input
-                                type='number'
-                                id='bathroom'
-                                min='1'
-                                max='10'
-                                required
-                                className='p-3 border border-gray-300 rounded-lg'
-                                onChange={handleChange}
-                                value={formData.bathroom}
-                            />
-                            <p>Baths</p>
-                        </div>
-                        <div className='flex items-center gap-2'>
-                            <input
-                                type='number'
-                                id='regularPrice'
-                                min='50'
-                                max='10000000'
-                                required
-                                className='p-3 border border-gray-300 rounded-lg'
-                                onChange={handleChange}
-                                value={formData.regularPrice}
-                            />
-                            <div className='flex flex-col items-center'>
-                                <p>Regular price</p>
-                                {formData.type === 'rent' && (
-                                    <span className='text-xs'>($ / month)</span>
-                                )}
-                            </div>
-                        </div>
-                        {formData.offer && (
-                            <div className='flex items-center gap-2'>
-                                <input
-                                    type='number'
-                                    id='discountPrice'
-                                    min='0'
-                                    max='10000000'
-                                    required
-                                    className='p-3 border border-gray-300 rounded-lg'
-                                    onChange={handleChange}
-                                    value={formData.discountPrice}
-                                />
-                                <div className='flex flex-col items-center'>
-                                    <p>Discounted price</p>
-                                    {formData.type === 'rent' && (
-                                        <span className='text-xs'>($ / month)</span>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-                <div className='flex flex-col flex-1 gap-4'>
-                    <p className='font-semibold'>
-                        Images:
-                        <span className='font-normal text-gray-600 ml-2'>
-                            The first image will be the cover (max 6)
-                        </span>
-                    </p>
-                    <div className='flex gap-4'>
-                        <input
-                            onChange={(e) => setFiles(e.target.files)}
-                            className='p-3 border border-gray-300 rounded w-full'
-                            type='file'
-                            id='images'
-                            accept='image/*'
-                            multiple
-                        />
-                        <button
-                            type='button'
-                            disabled={uploading}
-                            onClick={handleImageSubmit}
-                            className='p-3 text-green-700 border border-green-700 rounded uppercase hover:shadow-lg disabled:opacity-80'
-                        >
-                            {uploading ? 'Uploading...' : 'Upload'}
-                        </button>
-                    </div>
-                    <p className='text-red-700 text-sm'>
-                        {imageUploadError && imageUploadError}
-                    </p>
-                    {formData.imageUrls.length > 0 &&
-                        formData.imageUrls.map((url, index) => (
-                            <div
-                                key={url}
-                                className='flex justify-between p-3 border items-center'
-                            >
-                                <img
-                                    src={url}
-                                    alt='listing image'
-                                    className='w-20 h-20 object-contain rounded-lg'
-                                />
-                                <button
-                                    type='button'
-                                    onClick={() => handleRemoveImage(index)}
-                                    className='p-3 text-red-700 rounded-lg uppercase hover:opacity-75'
-                                >
-                                    Delete
-                                </button>
-                            </div>
-                        ))}
-                    <button
-                        disabled={loading || uploading}
-                        className='p-3 bg-slate-700 text-white rounded-lg uppercase hover:opacity-95 disabled:opacity-80'
-                    >
-                        {loading ? 'Updating...' : 'Update listing'}
-                    </button>
-                    {error && <p className='text-red-700 text-sm'>{error}</p>}
-                </div>
-            </form>
-        </main>
-    );
+      const order = e.target.value.split('_')[1] || 'desc';
+
+      setSidebardata({ ...sidebardata, sort, order });
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const urlParams = new URLSearchParams();
+    urlParams.set('searchTerm', sidebardata.searchTerm);
+    urlParams.set('type', sidebardata.type);
+    urlParams.set('parking', sidebardata.parking);
+    urlParams.set('furnished', sidebardata.furnished);
+    urlParams.set('offer', sidebardata.offer);
+    urlParams.set('sort', sidebardata.sort);
+    urlParams.set('order', sidebardata.order);
+    const searchQuery = urlParams.toString();
+    navigate(`/search?${searchQuery}`);
+  };
+
+  const onShowMoreClick = async () => {
+    const numberOfListings = listings.length;
+    const startIndex = numberOfListings;
+    const urlParams = new URLSearchParams(location.search);
+    urlParams.set('startIndex', startIndex);
+    const searchQuery = urlParams.toString();
+    const res = await fetch(`/api/listing/get?${searchQuery}`);
+    const data = await res.json();
+    if (data.length < 9) {
+      setShowMore(false);
+    }
+    setListings([...listings, ...data]);
+  };
+  return (
+    <div className='flex flex-col md:flex-row'>
+      <div className='p-7  border-b-2 md:border-r-2 md:min-h-screen'>
+        <form onSubmit={handleSubmit} className='flex flex-col gap-8'>
+          <div className='flex items-center gap-2'>
+            <label className='whitespace-nowrap font-semibold'>
+              Search Term:
+            </label>
+            <input
+              type='text'
+              id='searchTerm'
+              placeholder='Search...'
+              className='border rounded-lg p-3 w-full'
+              value={sidebardata.searchTerm}
+              onChange={handleChange}
+            />
+          </div>
+          <div className='flex gap-2 flex-wrap items-center'>
+            <label className='font-semibold'>Type:</label>
+            <div className='flex gap-2'>
+              <input
+                type='checkbox'
+                id='all'
+                className='w-5'
+                onChange={handleChange}
+                checked={sidebardata.type === 'all'}
+              />
+              <span>Rent & Sale</span>
+            </div>
+            <div className='flex gap-2'>
+              <input
+                type='checkbox'
+                id='rent'
+                className='w-5'
+                onChange={handleChange}
+                checked={sidebardata.type === 'rent'}
+              />
+              <span>Rent</span>
+            </div>
+            <div className='flex gap-2'>
+              <input
+                type='checkbox'
+                id='sale'
+                className='w-5'
+                onChange={handleChange}
+                checked={sidebardata.type === 'sale'}
+              />
+              <span>Sale</span>
+            </div>
+            <div className='flex gap-2'>
+              <input
+                type='checkbox'
+                id='offer'
+                className='w-5'
+                onChange={handleChange}
+                checked={sidebardata.offer}
+              />
+              <span>Offer</span>
+            </div>
+          </div>
+          <div className='flex gap-2 flex-wrap items-center'>
+            <label className='font-semibold'>Amenities:</label>
+            <div className='flex gap-2'>
+              <input
+                type='checkbox'
+                id='parking'
+                className='w-5'
+                onChange={handleChange}
+                checked={sidebardata.parking}
+              />
+              <span>Parking</span>
+            </div>
+            <div className='flex gap-2'>
+              <input
+                type='checkbox'
+                id='furnished'
+                className='w-5'
+                onChange={handleChange}
+                checked={sidebardata.furnished}
+              />
+              <span>Furnished</span>
+            </div>
+          </div>
+          <div className='flex items-center gap-2'>
+            <label className='font-semibold'>Sort:</label>
+            <select
+              onChange={handleChange}
+              defaultValue={'created_at_desc'}
+              id='sort_order'
+              className='border rounded-lg p-3'
+            >
+              <option value='regularPrice_desc'>Price high to low</option>
+              <option value='regularPrice_asc'>Price low to hight</option>
+              <option value='createdAt_desc'>Latest</option>
+              <option value='createdAt_asc'>Oldest</option>
+            </select>
+          </div>
+          <button className='bg-slate-700 text-white p-3 rounded-lg uppercase hover:opacity-95'>
+            Search
+          </button>
+        </form>
+      </div>
+      <div className='flex-1'>
+        <h1 className='text-3xl font-semibold border-b p-3 text-slate-700 mt-5'>
+          Listing results:
+        </h1>
+        <div className='p-7 flex flex-wrap gap-4'>
+          {!loading && listings.length === 0 && (
+            <p className='text-xl text-slate-700'>No listing found!</p>
+          )}
+          {loading && (
+            <p className='text-xl text-slate-700 text-center w-full'>
+              Loading...
+            </p>
+          )}
+
+          {!loading &&
+            listings &&
+            listings.map((listing) => (
+              <ListingItem key={listing._id} listing={listing} />
+            ))}
+
+          {showMore && (
+            <button
+              onClick={onShowMoreClick}
+              className='text-green-700 hover:underline p-7 text-center w-full'
+            >
+              Show more
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
